@@ -7,10 +7,13 @@ namespace YARG.Core.Engine.Guitar.Engines
 {
     public class YargFiveFretEngine : GuitarEngine
     {
+        protected EngineTimer StrumLimit;
+
         public YargFiveFretEngine(InstrumentDifficulty<GuitarNote> chart, SyncTrack syncTrack,
             GuitarEngineParameters engineParameters, bool isBot)
             : base(chart, syncTrack, engineParameters, isBot)
         {
+            StrumLimit = new EngineTimer(0.052);
         }
 
         protected override void UpdateBot(double time)
@@ -77,7 +80,11 @@ namespace YARG.Core.Engine.Guitar.Engines
             }
             else if (action is GuitarAction.StrumDown or GuitarAction.StrumUp && gameInput.Button)
             {
-                HasStrummed = true;
+                if (!StrumLimit.IsActive)
+                {
+                    HasStrummed = true;
+                    StrumLimit.Start(CurrentTime);
+                }
             }
             else if (IsFretInput(gameInput))
             {
@@ -475,6 +482,11 @@ namespace YARG.Core.Engine.Guitar.Engines
                     ReRunHitLogic = true;
                 }
             }
+
+            if (StrumLimit.IsActive && StrumLimit.IsExpired(CurrentTime))
+            {
+                StrumLimit.Disable();
+            }
         }
 
         protected bool CheckForGhostInput(GuitarNote note)
@@ -514,6 +526,32 @@ namespace YARG.Core.Engine.Guitar.Engines
             }
 
             return msbIndex;
+        }
+
+        protected override void GenerateQueuedUpdates(double nextTime)
+        {
+            base.GenerateQueuedUpdates(nextTime);
+            if (StrumLimit.IsActive)
+            {
+                if (IsTimeBetween(StrumLimit.EndTime, CurrentTime, nextTime))
+                {
+                    YargLogger.LogFormatTrace("Queuing strum limit end time at {0}",
+                        StrumLimit.EndTime);
+                    QueueUpdateTime(StrumLimit.EndTime, "Strum limit End");
+                }
+            }
+        }
+
+        public override void Reset(bool keepCurrentButtons = false)
+        {
+            base.Reset(keepCurrentButtons);
+            StrumLimit.Disable();
+        }
+
+        public override void SetSpeed(double speed)
+        {
+            base.SetSpeed(speed);
+            StrumLimit.SetSpeed(speed);
         }
     }
 }
